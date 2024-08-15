@@ -11,17 +11,16 @@ install-pkg() {
   PKG_VERSION="${2-}"
 
   if [ -z "${PKG_NAME}" ]; then
-    echo "PKG_NAME param is invalid!"
+    echo "PKG_NAME param is invalid!" >&2
     exit 1
   fi
 
   if [ -z "${PKG_VERSION}" ]; then
-    echo "PKG_VERSION param is invalid!"
+    echo "PKG_VERSION param is invalid!" >&2
     exit 1
   fi
 
   if rpm -q "${PKG_NAME}-${PKG_VERSION}" &>/dev/null; then
-    echo "${PKG_NAME} is already installed!"
     return 0
   fi
 
@@ -30,18 +29,18 @@ install-pkg() {
       echo "[Warning] old ${PKG_NAME} installed is ignored!"
       return 0
     fi
-    echo "Find old ${PKG_NAME} installed, abort!"
+    echo "Find old ${PKG_NAME} installed, abort!" >&2
     exit 1
   fi
 
   echo "Installing ${PKG_NAME} version ${PKG_VERSION} ..."
-  if ! yum install "${PKG_NAME}-${PKG_VERSION}" -y &>>/var/log/install.log; then
-    echo "Failed to install ${PKG_NAME}. Check /var/log/install.log for details."
+  if ! yum -y install "${PKG_NAME}-${PKG_VERSION}"; then
+    echo "Failed to install ${PKG_NAME} !" >&2
     exit 1
   fi
 
   if ! rpm -q "${PKG_NAME}-${PKG_VERSION}" &>/dev/null; then
-    echo "Failed to install ${PKG_NAME}. Check /var/log/install.log for details."
+    echo "Failed to install ${PKG_NAME} !" >&2
     exit 1
   fi
 }
@@ -62,7 +61,7 @@ main() {
       exit 0
       ;;
     \?)
-      echo "Invalid option: -$OPTARG, Usage: ${0} ${USAGE}"
+      echo "Invalid option: -$OPTARG, Usage: ${0} ${USAGE}" >&2
       exit 1
       ;;
     :)
