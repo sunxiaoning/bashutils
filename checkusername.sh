@@ -92,8 +92,8 @@ check-username() {
   ssh)
     check-ssh-username
     ;;
-  :)
-    echo "OS_NAME: ${IP_VERSION} is invalid!" >&2
+  *)
+    echo "OS_NAME: ${OS_NAME} is invalid!" >&2
     return 1
     ;;
   esac

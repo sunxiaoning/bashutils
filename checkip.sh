@@ -48,7 +48,7 @@ check-ip() {
   6)
     check-ipv6
     ;;
-  :)
+  *)
     echo "IP_VERSION: ${IP_VERSION} is invalid!" >&2
     return 1
     ;;
