@@ -20,7 +20,7 @@ function check-hostip() {
 
   local available_ips=$(hostname -I)
 
-  IFS=' ' read -r -a available_ips_array <<< "$available_ips"
+  IFS=' ' read -r -a available_ips_array <<<"$available_ips"
 
   for ip in "${available_ips_array[@]}"; do
     if [ "$ip" == "${host_ip}" ]; then
@@ -65,4 +65,3 @@ main() {
 }
 
 main "$@"
-
