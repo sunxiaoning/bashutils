@@ -11,7 +11,7 @@ function check-hostip() {
   local host_ip="${1-}"
   if [ -z "${host_ip}" ]; then
     echo "host_ip param is invalid !" >&2
-    exit 1
+    return 1
   fi
 
   if [[ "${LOOP_BACK}" == "1" && ${host_ip} == "${LOOP_BACK_IP}" ]]; then
@@ -29,7 +29,7 @@ function check-hostip() {
   done
 
   echo "host_ip: ${host_ip} is invalid!" >&2
-  exit 1
+  return 1
 }
 
 main() {
@@ -45,15 +45,15 @@ main() {
       ;;
     h)
       echo "Usage: ${0} ${USAGE}"
-      exit 0
+      return 0
       ;;
     \?)
       echo "Invalid option: -$OPTARG, Usage: ${0} ${USAGE}" >&2
-      exit 1
+      return 1
       ;;
     :)
       echo "Option -$OPTARG requires an argument." >&2
-      exit 1
+      return 1
       ;;
     esac
   done

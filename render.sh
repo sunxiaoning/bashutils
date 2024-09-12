@@ -48,11 +48,11 @@ for varname in $varnames; do
 done
 
 if [[ $error = true ]]; then
-        exit 1
+        return 1
 elif [[ -n $expressions ]]; then
         cat $1 | eval sed -r "$expressions" > $output
-        exit 0
+        return 0
 else
 	      cat $1 > $output
-        exit 0
+        return 0
 fi
