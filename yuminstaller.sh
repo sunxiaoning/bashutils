@@ -12,12 +12,12 @@ install-pkg() {
 
   if [ -z "${PKG_NAME}" ]; then
     echo "PKG_NAME param is invalid!" >&2
-    exit 1
+    return 1
   fi
 
   if [ -z "${PKG_VERSION}" ]; then
     echo "PKG_VERSION param is invalid!" >&2
-    exit 1
+    return 1
   fi
 
   if rpm -q "${PKG_NAME}-${PKG_VERSION}" &>/dev/null; then
@@ -30,18 +30,18 @@ install-pkg() {
       return 0
     fi
     echo "Find old ${PKG_NAME} installed, abort!" >&2
-    exit 1
+    return 1
   fi
 
   echo "Installing ${PKG_NAME} version ${PKG_VERSION} ..."
   if ! yum -y install "${PKG_NAME}-${PKG_VERSION}"; then
     echo "Failed to install ${PKG_NAME} !" >&2
-    exit 1
+    return 1
   fi
 
   if ! rpm -q "${PKG_NAME}-${PKG_VERSION}" &>/dev/null; then
     echo "Failed to install ${PKG_NAME} !" >&2
-    exit 1
+    return 1
   fi
 }
 
@@ -58,15 +58,15 @@ main() {
       ;;
     h)
       echo "Usage: ${0} ${USAGE}"
-      exit 0
+      return 0
       ;;
     \?)
       echo "Invalid option: -$OPTARG, Usage: ${0} ${USAGE}" >&2
-      exit 1
+      return 1
       ;;
     :)
       echo "Option -$OPTARG requires an argument." >&2
-      exit 1
+      return 1
       ;;
     esac
   done
