@@ -3,12 +3,20 @@ set -o nounset
 set -o errexit
 set -o pipefail
 
-USAGE="[-f] [-h] pkg_name pkg_version"
+USAGE="[-of] [-h] yum_options pkg_name pkg_version"
+
+YUM_CMD=("yum")
+
+YUM_OPTIONS=""
 FORCE=""
 
 install-pkg() {
   PKG_NAME="${1-}"
   PKG_VERSION="${2-}"
+
+  if [ -n "${YUM_OPTIONS}" ]; then
+    YUM_CMD+=("${YUM_OPTIONS}")
+  fi
 
   if [ -z "${PKG_NAME}" ]; then
     echo "PKG_NAME param is invalid!" >&2
@@ -34,7 +42,7 @@ install-pkg() {
   fi
 
   echo "Installing ${PKG_NAME} version ${PKG_VERSION} ..."
-  if ! yum -y install "${PKG_NAME}-${PKG_VERSION}"; then
+  if ! "${YUM_CMD[@]}" install "${PKG_NAME}-${PKG_VERSION}"; then
     echo "Failed to install ${PKG_NAME} !" >&2
     return 1
   fi
@@ -46,13 +54,16 @@ install-pkg() {
 }
 
 main() {
-  local opt_string=":fh"
+  local opt_string=":o:fh"
   local opt
 
   #echo "Parsing arguments: $@ with opt_string: ${opt_string}"
 
   while getopts "${opt_string}" opt; do
     case ${opt} in
+    o)
+      YUM_OPTIONS=$OPTARG
+      ;;
     f)
       FORCE="1"
       ;;
