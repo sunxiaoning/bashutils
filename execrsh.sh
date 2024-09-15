@@ -61,7 +61,7 @@ run-remote-bash() {
   IFS=' ' read -r -a file_paths_array <<<"${FILE_PATHS}"
 
   if [ "${#file_paths_array[@]}" -gt 0 ]; then
-    rsync -avz -e "${SSH_CMD[*]}" --delete "${file_paths_array[@]}" "${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_TEMP_DIR}/"
+    rsync -avzq -e "${SSH_CMD[*]}" --delete "${file_paths_array[@]}" "${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_TEMP_DIR}/"
     echo "Synchronized file_paths: ${FILE_PATHS} to remote_host: ${REMOTE_HOST}."
   fi
 
