@@ -157,11 +157,11 @@ terminate() {
     done
   fi
 
-  for pid in $(jobs -p); do
-    local pgid=$(ps -o pgid= ${pid} | grep -o '[0-9]*')
+  for pid in $(pgrep -P $$); do
+    pgid=$(ps -o pgid= $pid | grep -o '[0-9]*')
     if [ -n "${pgid}" ] && ps -p ${pgid} >/dev/null; then
       echo "Killing job: pgid: ${pgid}"
-      kill -TERM -${pgid}
+      kill -TERM -$pgid
     fi
   done
 
