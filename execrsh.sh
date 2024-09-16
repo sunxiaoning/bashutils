@@ -24,7 +24,7 @@ SSH_CMD=("ssh")
 
 REMOTE_TEMP_DIR=""
 REMOTE_PID=""
-
+SCRIPT_NAME=$(basename "$0")
 SCRIPT_DIR=$(dirname "$(realpath "${BASH_SOURCE}")")
 CHECK_HOST_NAME_SH_FILE="${SCRIPT_DIR}/checkhostname.sh"
 CHECK_USER_NAME_SH_FILE="${SCRIPT_DIR}/checkusername.sh"
@@ -146,7 +146,7 @@ terminate() {
   fi
   TERMINATE_DONE=1
 
-  echo "Received signal INT or TERM, performing terminate..."
+  echo "[${SCRIPT_NAME}] Received signal INT or TERM, performing terminate..."
 
   if [ -n "${REMOTE_PID}" ]; then
     while "${SSH_CMD[@]}" "${REMOTE_USER}@${REMOTE_HOST}" "kill -0 ${REMOTE_PID} > /dev/null 2>&1"; do
@@ -167,9 +167,9 @@ terminate() {
 
   wait
 
-  echo "All jobs in group terminated."
+  echo "[${SCRIPT_NAME}] All child process in group terminated."
 
-  echo "Terminate done."
+  echo "[${SCRIPT_NAME}] Terminate done."
   exit 1
 }
 
@@ -178,12 +178,12 @@ cleanup() {
     return
   fi
   CLEAN_DONE=1
-  echo "Received signal EXIT, performing cleanup..."
+  echo "[${SCRIPT_NAME}] Received signal EXIT, performing cleanup..."
 
   if [ -n "${REMOTE_TEMP_DIR}" ]; then
-    echo "Cleaning remote_temp_dir..."
+    echo "[${SCRIPT_NAME}] Cleaning remote_temp_dir..."
     "${SSH_CMD[@]}" "${REMOTE_USER}@${REMOTE_HOST}" "rm -rf ${REMOTE_TEMP_DIR}" || true
-    echo "Cleanup done."
+    echo "[${SCRIPT_NAME}] Cleanup done."
   fi
 }
 
