@@ -13,7 +13,7 @@ __get-current-user() {
 }
 
 __get-original-user() {
-  if [ -z "$SUDO_USER" ]; then
+  if ! __is-sudo; then
     __get-current-user
     return 0
   fi
@@ -37,9 +37,15 @@ __has-root-privileges() {
 }
 
 __is-real-root() {
-  [[ "$EUID" -eq 0 && -z "$SUDO_USER" ]]
+  if [[ "$EUID" -eq 0 && -z "${SUDO_USER-}" ]]; then
+    return 0
+  fi
+  return 1
 }
 
 __is-sudo() {
-  [[ -n "$SUDO_USER" ]]
+  if [ -z "${SUDO_USER-}" ]; then
+    return 1
+  fi
+  return 0
 }
