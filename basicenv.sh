@@ -49,3 +49,45 @@ __is-sudo() {
   fi
   return 0
 }
+
+__TERMINATE_DONE=0
+
+__terminate() {
+  if [[ ${__TERMINATE_DONE} -eq 1 ]]; then
+    return
+  fi
+  __TERMINATE_DONE=1
+
+  echo "[${SCRIPT_NAME}] Received signal INT or TERM, performing terminate..."
+
+  for pid in $(pgrep -P $$); do
+    pgid=$(ps -o pgid= $pid | grep -o '[0-9]*')
+    if [ -n "${pgid}" ] && ps -p ${pgid} >/dev/null; then
+      echo "Killing job: pgid: ${pgid}"
+      kill -TERM -$pgid
+    fi
+  done
+
+  wait
+
+  echo "[${SCRIPT_NAME}] All child process in group terminated."
+
+  terminate
+
+  echo "[${SCRIPT_NAME}] Terminate done."
+  exit 1
+}
+
+__CLEAN_DONE=0
+
+__cleanup() {
+  if [[ ${__CLEAN_DONE} -eq 1 ]]; then
+    return
+  fi
+  __CLEAN_DONE=1
+  echo "[${SCRIPT_NAME}] Received signal EXIT, performing cleanup..."
+
+  cleanup
+
+  echo "[${SCRIPT_NAME}] Cleanup done."
+}

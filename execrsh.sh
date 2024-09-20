@@ -1,9 +1,6 @@
 #!/bin/bash
-set -o nounset
-set -o errexit
-set -o pipefail
 
-#set -ex
+SCRIPT_DIR=$(dirname "$(realpath "${BASH_SOURCE}")")
 
 TERMINATE_DONE=0
 CLEAN_DONE=0
@@ -11,10 +8,12 @@ CLEAN_DONE=0
 trap terminate INT TERM
 trap cleanup EXIT
 
-USAGE="[-eu:p:b:h] remote_host file_paths bash_file"
+USAGE="[-eu:p:b:a:r:h] remote_host file_paths bash_file"
 
 FILE_PATHS=""
 BASH_ENVS=""
+BASH_ARGS=""
+BASH_RESULT=""
 
 SSH_OPTIONS=""
 REMOTE_HOST=""
@@ -61,6 +60,10 @@ run-remote-bash() {
   IFS=' ' read -r -a file_paths_array <<<"${FILE_PATHS}"
 
   if [ "${#file_paths_array[@]}" -gt 0 ]; then
+    for i in "${!file_paths_array[@]}"; do
+      file_paths_array[$i]="$(check_and_resolve_path "${file_paths_array[$i]}")"
+    done
+
     rsync -avzq -e "${SSH_CMD[*]}" --delete "${file_paths_array[@]}" "${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_TEMP_DIR}/"
     echo "Synchronized file_paths: ${FILE_PATHS} to remote_host: ${REMOTE_HOST}."
   fi
@@ -71,20 +74,37 @@ run-remote-bash() {
   local pid_file="${REMOTE_TEMP_DIR}/$(basename ${bash_file_path} .sh)_$(date +%s).log"
 
   bash_envs_array+=("WORKDIR=${REMOTE_TEMP_DIR}" "PID_FILE=${pid_file}")
+
+  local pid_res_file=""
+  if [[ -n ${BASH_RESULT} ]]; then
+    pid_res_file="${REMOTE_TEMP_DIR}/$(basename ${bash_file_path} .sh)_res_$(date +%s).log"
+    bash_envs_array+=("PID_RES_FILE=${pid_res_file}")
+  fi
   echo "Bash envs: ${bash_envs_array[@]}"
 
   echo "Executing bash_file_path: ${bash_file_path}..."
 
+  if [[ -n "${BASH_ARGS}" ]]; then
+    echo "Bash args: ${BASH_ARGS}"
+  fi
+
   "${SSH_CMD[@]}" "${REMOTE_USER}@${REMOTE_HOST}" "
-        ${bash_envs_array[@]} bash ${REMOTE_TEMP_DIR}/${bash_file_path}
+       bash -c '
+        if [[ -f "${REMOTE_TEMP_DIR}/${bash_file_path}" && -x "${REMOTE_TEMP_DIR}/${bash_file_path}" ]]; then
+          ${bash_envs_array[@]} \"${REMOTE_TEMP_DIR}/${bash_file_path}\" ${BASH_ARGS}
+        else
+          echo "Error: File ${REMOTE_TEMP_DIR}/${bash_file_path} does not exist or is not executable." >&2
+          exit 1
+        fi
+      '
       " &
 
   local ssh_pid=$(echo $!)
-  sleep 1
+  # sleep 1
 
-  if ! kill -0 ${ssh_pid} 2>/dev/null; then
-    exit 1
-  fi
+  # if ! kill -0 ${ssh_pid} 2>/dev/null; then
+  #   exit 1
+  # fi
 
   local wait_time=0
   local max_wait=30
@@ -107,8 +127,23 @@ run-remote-bash() {
   wait ${ssh_pid}
   echo "Remote bash process: ${REMOTE_PID} has completed."
 
-  echo "Cleaning remote_pid_file..."
-  "${SSH_CMD[@]}" "${REMOTE_USER}@${REMOTE_HOST}" "rm -f ${pid_file}"
+  if [[ -n ${BASH_RESULT} ]]; then
+    echo "Writting bash result..."
+    "${SSH_CMD[@]}" "${REMOTE_USER}@${REMOTE_HOST}" "cat ${pid_res_file}" >"${BASH_RESULT}"
+  fi
+
+  echo "Cleaning remote_pid_file, remote_pid_res_file ..."
+  "${SSH_CMD[@]}" "${REMOTE_USER}@${REMOTE_HOST}" "rm -f ${pid_file} "
+}
+
+check_and_resolve_path() {
+  local path="$1"
+  if [ -e "$path" ]; then
+    realpath "$path"
+  else
+    echo "Error: Path '$path' does not exist." >&2
+    exit 1
+  fi
 }
 
 check-remotehost() {
@@ -188,7 +223,7 @@ cleanup() {
 }
 
 main() {
-  local opt_string=":e:u:p:b:h"
+  local opt_string=":e:u:p:b:a:r:h"
   local opt
 
   #echo "Parsing arguments: $@ with opt_string: ${opt_string}"
@@ -206,6 +241,12 @@ main() {
       ;;
     b)
       BASH_ENVS=$OPTARG
+      ;;
+    a)
+      BASH_ARGS=$OPTARG
+      ;;
+    r)
+      BASH_RESULT=$OPTARG
       ;;
     h)
       echo "Usage: ${0} ${USAGE}"
