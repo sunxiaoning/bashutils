@@ -15,7 +15,9 @@ install-pkg() {
   PKG_VERSION="${2-}"
 
   if [ -n "${YUM_OPTIONS}" ]; then
-    YUM_CMD+=("${YUM_OPTIONS}")
+    local yum_options_array=()
+    IFS=' ' read -r -a yum_options_array <<<"${YUM_OPTIONS}"
+    YUM_CMD+=("${yum_options_array[@]}")
   fi
 
   if [ -z "${PKG_NAME}" ]; then

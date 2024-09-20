@@ -47,7 +47,9 @@ run-remote-bash() {
   check-remoteuser
 
   if [ -n "${SSH_OPTIONS}" ]; then
-    SSH_CMD+=("${SSH_OPTIONS}")
+    local ssh_options_array=()
+    IFS=' ' read -r -a ssh_options_array <<<"${YUM_OPTIONS}"
+    SSH_CMD+=("${ssh_options_array[@]}")
   fi
 
   echo "CurrentUser: ${REMOTE_USER}"
