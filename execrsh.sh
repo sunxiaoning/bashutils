@@ -48,7 +48,7 @@ run-remote-bash() {
 
   if [ -n "${SSH_OPTIONS}" ]; then
     local ssh_options_array=()
-    IFS=' ' read -r -a ssh_options_array <<<"${YUM_OPTIONS}"
+    IFS=' ' read -r -a ssh_options_array <<<"${SSH_OPTIONS}"
     SSH_CMD+=("${ssh_options_array[@]}")
   fi
 
