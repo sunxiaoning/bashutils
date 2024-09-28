@@ -60,6 +60,8 @@ __terminate() {
 
   echo "[${SCRIPT_NAME}] Received signal INT or TERM, performing terminate..."
 
+  terminate
+
   for pid in $(pgrep -P $$); do
     pgid=$(ps -o pgid= $pid | grep -o '[0-9]*')
     if [ -n "${pgid}" ] && ps -p ${pgid} >/dev/null; then
@@ -71,8 +73,6 @@ __terminate() {
   wait
 
   echo "[${SCRIPT_NAME}] All child process in group terminated."
-
-  terminate
 
   echo "[${SCRIPT_NAME}] Terminate done."
   exit 1
