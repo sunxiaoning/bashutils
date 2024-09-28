@@ -2,11 +2,10 @@
 
 SCRIPT_DIR=$(dirname "$(realpath "${BASH_SOURCE}")")
 
-TERMINATE_DONE=0
-CLEAN_DONE=0
+. ${SCRIPT_DIR}/../bashutils/basicenv.sh
 
-trap terminate INT TERM
-trap cleanup EXIT
+trap __terminate INT TERM
+trap __cleanup EXIT
 
 USAGE="[-eu:p:b:a:r:h] remote_host file_paths bash_file"
 
@@ -110,6 +109,8 @@ run-remote-bash() {
 
   local wait_time=0
   local max_wait=30
+
+  set +e
   while true; do
     if "${SSH_CMD[@]}" "${REMOTE_USER}@${REMOTE_HOST}" "[[ -s "${pid_file}" ]]"; then
       break
@@ -122,20 +123,19 @@ run-remote-bash() {
     sleep 1
     ((wait_time++))
   done
+  set -e
 
   REMOTE_PID=$("${SSH_CMD[@]}" "${REMOTE_USER}@${REMOTE_HOST}" "cat ${pid_file}")
   echo "Got remote_bash_pid: ${REMOTE_PID}."
 
   wait ${ssh_pid}
+
   echo "Remote bash process: ${REMOTE_PID} has completed."
 
   if [[ -n ${BASH_RESULT} ]]; then
     echo "Writting bash result..."
     "${SSH_CMD[@]}" "${REMOTE_USER}@${REMOTE_HOST}" "cat ${pid_res_file}" >"${BASH_RESULT}"
   fi
-
-  echo "Cleaning remote_pid_file, remote_pid_res_file ..."
-  "${SSH_CMD[@]}" "${REMOTE_USER}@${REMOTE_HOST}" "rm -f ${pid_file} "
 }
 
 check_and_resolve_path() {
@@ -178,13 +178,10 @@ check-remoteuser() {
 }
 
 terminate() {
-  if [[ ${TERMINATE_DONE} -eq 1 ]]; then
-    return
-  fi
-  TERMINATE_DONE=1
+  kill-remote-pid
+}
 
-  echo "[${SCRIPT_NAME}] Received signal INT or TERM, performing terminate..."
-
+kill-remote-pid() {
   if [ -n "${REMOTE_PID}" ]; then
     while "${SSH_CMD[@]}" "${REMOTE_USER}@${REMOTE_HOST}" "kill -0 ${REMOTE_PID} > /dev/null 2>&1"; do
       echo "Killing remote process ${REMOTE_PID}"
@@ -193,29 +190,10 @@ terminate() {
       sleep 5
     done
   fi
-
-  for pid in $(pgrep -P $$); do
-    pgid=$(ps -o pgid= $pid | grep -o '[0-9]*')
-    if [ -n "${pgid}" ] && ps -p ${pgid} >/dev/null; then
-      echo "Killing job: pgid: ${pgid}"
-      kill -TERM -$pgid
-    fi
-  done
-
-  wait
-
-  echo "[${SCRIPT_NAME}] All child process in group terminated."
-
-  echo "[${SCRIPT_NAME}] Terminate done."
-  exit 1
 }
 
 cleanup() {
-  if [[ ${CLEAN_DONE} -eq 1 ]]; then
-    return
-  fi
-  CLEAN_DONE=1
-  echo "[${SCRIPT_NAME}] Received signal EXIT, performing cleanup..."
+  kill-remote-pid
 
   if [ -n "${REMOTE_TEMP_DIR}" ]; then
     echo "[${SCRIPT_NAME}] Cleaning remote_temp_dir..."
