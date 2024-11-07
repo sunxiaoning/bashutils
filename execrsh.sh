@@ -7,18 +7,32 @@ SCRIPT_DIR=$(dirname "$(realpath "${BASH_SOURCE}")")
 trap __terminate INT TERM
 trap __cleanup EXIT
 
-USAGE="[-eu:p:b:a:r:h] remote_host file_paths bash_file"
+USAGE="[-eu:p:b:a:r:sh] remote_host file_paths bash_file"
 
 FILE_PATHS=""
+
+# TODO env, arg don't known file_paths, at least should known it's root path, one way is to convert path in env,arg to an inner path, `using root path identifier`.
+
 BASH_ENVS=""
 BASH_ARGS=""
 BASH_RESULT=""
 
 SSH_OPTIONS=""
 REMOTE_HOST=""
-REMOTE_USER="${USER}"
+
+REMOTE_USER=$(__get-original-user)
+REMOTE_SUDO=""
+REMOTE_PASSWORD=${REMOTE_PASSWORD:-""}
 
 SSH_CMD=("ssh")
+
+if [[ -n "${REMOTE_PASSWORD}" ]]; then
+  if ! rpm -q "sshpass" &>/dev/null; then
+    sudo yum -y install sshpass
+  fi
+
+  SSH_CMD=("sshpass" "-v" "-p" "${REMOTE_PASSWORD}" "ssh")
+fi
 
 REMOTE_TEMP_DIR=""
 REMOTE_PID=""
@@ -89,8 +103,13 @@ run-remote-bash() {
     echo "Bash args: ${BASH_ARGS}"
   fi
 
+  local remote_bash="bash"
+  if [[ -n "${REMOTE_SUDO}" ]]; then
+    remote_bash="sudo ${remote_bash}"
+  fi
+
   "${SSH_CMD[@]}" "${REMOTE_USER}@${REMOTE_HOST}" "
-       bash -c '
+      ${remote_bash} -c '
         if [[ -f "${REMOTE_TEMP_DIR}/${bash_file_path}" && -x "${REMOTE_TEMP_DIR}/${bash_file_path}" ]]; then
           ${bash_envs_array[@]} \"${REMOTE_TEMP_DIR}/${bash_file_path}\" ${BASH_ARGS}
         else
@@ -203,7 +222,7 @@ cleanup() {
 }
 
 main() {
-  local opt_string=":e:u:p:b:a:r:h"
+  local opt_string=":e:u:p:b:a:r:sh"
   local opt
 
   #echo "Parsing arguments: $@ with opt_string: ${opt_string}"
@@ -227,6 +246,9 @@ main() {
       ;;
     r)
       BASH_RESULT=$OPTARG
+      ;;
+    s)
+      REMOTE_SUDO="1"
       ;;
     h)
       echo "Usage: ${0} ${USAGE}"

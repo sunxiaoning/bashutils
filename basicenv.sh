@@ -9,27 +9,23 @@ if [[ "${__USE_DEBUG}" == "1" ]]; then
 fi
 
 __get-current-user() {
-  echo "$(whoami)"
+  bash -c "echo \$(whoami)"
 }
 
 __get-original-user() {
-  if ! __is-sudo; then
-    __get-current-user
+  if __is-sudo; then
+    echo "${SUDO_USER}"
     return 0
   fi
-  echo "$SUDO_USER"
+  __get-current-user
 }
 
 __get-current-home-dir() {
-  echo "$HOME"
+  bash -c "echo \${HOME}"
 }
 
 __get-original-home-dir() {
-  if __has-root-privileges && __is-sudo; then
-    eval echo ~$SUDO_USER
-    return 0
-  fi
-  __get-current-home-dir
+  echo "${HOME}"
 }
 
 __has-root-privileges() {
@@ -44,10 +40,10 @@ __is-real-root() {
 }
 
 __is-sudo() {
-  if [ -z "${SUDO_USER-}" ]; then
-    return 1
+  if [ "$EUID" -eq 0 ] && [ -n "${SUDO_USER-}" ]; then
+    return 0
   fi
-  return 0
+  return 1
 }
 
 __TERMINATE_DONE=0
