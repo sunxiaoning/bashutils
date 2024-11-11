@@ -7,7 +7,7 @@ SCRIPT_DIR=$(dirname "$(realpath "${BASH_SOURCE}")")
 trap __terminate INT TERM
 trap __cleanup EXIT
 
-USAGE="[-eu:p:b:a:r:sh] remote_host file_paths bash_file"
+USAGE="[-e:u:t:p:b:a:r:sh] remote_host file_paths bash_file"
 
 FILE_PATHS=""
 
@@ -22,17 +22,9 @@ REMOTE_HOST=""
 
 REMOTE_USER=$(__get-original-user)
 REMOTE_SUDO=""
-REMOTE_PASSWORD=${REMOTE_PASSWORD:-""}
+REMOTE_PASSWORD=""
 
 SSH_CMD=("ssh")
-
-if [[ -n "${REMOTE_PASSWORD}" ]]; then
-  if ! rpm -q "sshpass" &>/dev/null; then
-    sudo yum -y install sshpass
-  fi
-
-  SSH_CMD=("sshpass" "-v" "-p" "${REMOTE_PASSWORD}" "ssh")
-fi
 
 REMOTE_TEMP_DIR=""
 REMOTE_PID=""
@@ -58,6 +50,17 @@ run-remote-bash() {
   check-remotehost
 
   check-remoteuser
+
+  if [[ -n "${REMOTE_PASSWORD}" ]]; then
+    if ! rpm -q "sshpass" &>/dev/null; then
+      sudo yum -y install sshpass
+    fi
+
+    local remote_password="${REMOTE_PASSWORD}"
+    unset REMOTE_PASSWORD
+
+    SSH_CMD=("sshpass" "-v" "-p" "${remote_password}" "ssh")
+  fi
 
   if [ -n "${SSH_OPTIONS}" ]; then
     local ssh_options_array=()
@@ -222,7 +225,7 @@ cleanup() {
 }
 
 main() {
-  local opt_string=":e:u:p:b:a:r:sh"
+  local opt_string=":e:u:t:p:b:a:r:sh"
   local opt
 
   #echo "Parsing arguments: $@ with opt_string: ${opt_string}"
@@ -234,6 +237,9 @@ main() {
       ;;
     u)
       REMOTE_USER=$OPTARG
+      ;;
+    t)
+      REMOTE_PASSWORD=$OPTARG
       ;;
     p)
       FILE_PATHS=$OPTARG
