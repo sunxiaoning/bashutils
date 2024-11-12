@@ -9,7 +9,7 @@ if [[ "${__USE_DEBUG}" == "1" ]]; then
 fi
 
 __get-current-user() {
-  bash -c "echo \$(whoami)"
+  whoami
 }
 
 __get-original-user() {
@@ -21,11 +21,19 @@ __get-original-user() {
 }
 
 __get-current-home-dir() {
-  bash -c "echo \${HOME}"
+  if __has-root-privileges; then
+    echo "/root"
+  else
+    echo "${HOME}"
+  fi
 }
 
 __get-original-home-dir() {
-  echo "${HOME}"
+  if __is-sudo; then
+    eval echo "~${SUDO_USER}"
+  else
+    echo "${HOME}"
+  fi
 }
 
 __has-root-privileges() {
