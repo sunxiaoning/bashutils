@@ -66,11 +66,14 @@ __terminate() {
 
   terminate
 
-  for pid in $(pgrep -P $$); do
-    pgid=$(ps -o pgid= $pid | grep -o '[0-9]*')
+  # kill_process_tree $$
+
+  local pgids=$(pgrep -P $$) || true
+  for pid in $pgids; do
+    local pgid=$(ps -o pgid= $pid | grep -o '[0-9]*') || true
     if [ -n "${pgid}" ] && ps -p ${pgid} >/dev/null; then
       echo "Killing job: pgid: ${pgid}"
-      kill -TERM -$pgid
+      kill -TERM -$pgid || true
     fi
   done
 
@@ -80,6 +83,35 @@ __terminate() {
 
   echo "[${SCRIPT_NAME}] Terminate done."
   exit 1
+}
+
+sent_pgid=()
+
+kill_process_tree() {
+  local pid=$1
+
+  local pgid=$(ps -o pgid= -p $pid | grep -o '[0-9]*') || true
+
+  if [[ -z "$pgid" ]]; then
+    echo "Invalid process ID or failed to get PGID."
+    return 1
+  fi
+
+  if [[ " ${sent_pgid[@]} " =~ " ${pgid} " ]]; then
+    echo "Process group $pgid has already been killed. Skipping."
+    return 0
+  fi
+
+  echo "Killing process group: $pgid"
+  kill -TERM -$pgid || true
+
+  sent_pgid+=($pgid)
+
+  local child_pids=$(pgrep -P $pid) || true
+
+  for child_pid in $child_pids; do
+    kill_process_tree $child_pid || true
+  done
 }
 
 __CLEAN_DONE=0
