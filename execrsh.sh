@@ -22,12 +22,14 @@ REMOTE_HOST=""
 
 REMOTE_USER=$(__get-original-user)
 REMOTE_SUDO=""
+REMOTE_SH="bash"
 REMOTE_PASSWORD=""
 
 SSH_CMD=("ssh")
 
 REMOTE_TEMP_DIR=""
 REMOTE_PID=""
+
 SCRIPT_NAME=$(basename "$0")
 SCRIPT_DIR=$(dirname "$(realpath "${BASH_SOURCE}")")
 CHECK_HOST_NAME_SH_FILE="${SCRIPT_DIR}/checkhostname.sh"
@@ -108,17 +110,16 @@ run-remote-bash() {
     echo "Bash args: ${BASH_ARGS}"
   fi
 
-  local remote_bash="bash"
   if [[ -n "${REMOTE_SUDO}" ]]; then
-    remote_bash="sudo ${remote_bash}"
+    REMOTE_SH="sudo ${REMOTE_SH}"
   fi
 
-  # setsid "${SSH_CMD[@]}" "${REMOTE_USER}@${REMOTE_HOST}" "sudo ${bash_envs_array[@]} \"${REMOTE_TEMP_DIR}/${bash_file_path}\" ${BASH_ARGS}" &
+  trap '' INT TERM
 
   setsid "${SSH_CMD[@]}" "${REMOTE_USER}@${REMOTE_HOST}" "
-      ${remote_bash} -c '
+      ${REMOTE_SH} -c '
         if [[ -f "${REMOTE_TEMP_DIR}/${bash_file_path}" && -x "${REMOTE_TEMP_DIR}/${bash_file_path}" ]]; then
-          ${bash_envs_array[@]} \"${REMOTE_TEMP_DIR}/${bash_file_path}\" ${BASH_ARGS}
+          ${bash_envs_array[@]} "${REMOTE_TEMP_DIR}/${bash_file_path}" ${BASH_ARGS}
         else
           echo "Error: File ${REMOTE_TEMP_DIR}/${bash_file_path} does not exist or is not executable." >&2
           exit 1
@@ -131,9 +132,13 @@ run-remote-bash() {
   local wait_time=0
   local max_wait=30
 
-  set +e
   while true; do
-    if "${SSH_CMD[@]}" "${REMOTE_USER}@${REMOTE_HOST}" "[[ -s "${pid_file}" ]]"; then
+    if ! kill -0 ${SSH_PID}; then
+      echo "[Warning] SSH_PID: ${SSH_PID} has terminated."
+      break
+    fi
+
+    if "${SSH_CMD[@]}" "${REMOTE_USER}@${REMOTE_HOST}" "[[ -s ${pid_file} ]]"; then
       break
     fi
     if [ ${wait_time} -ge ${max_wait} ]; then
@@ -142,16 +147,21 @@ run-remote-bash() {
     fi
     echo "Waitting remote bash pid..."
     sleep 1
-    ((wait_time++))
+    wait_time=$((wait_time + 1))
   done
-  set -e
 
-  REMOTE_PID=$("${SSH_CMD[@]}" "${REMOTE_USER}@${REMOTE_HOST}" "cat ${pid_file}")
-  echo "Got remote_bash_pid: ${REMOTE_PID}."
+  REMOTE_PID=$("${SSH_CMD[@]}" "${REMOTE_USER}@${REMOTE_HOST}" "cat ${pid_file}") || echo "[Warning] Get remote_bash_pid failed."
+
+  if [[ -n "${REMOTE_PID}" ]]; then
+    echo "Got remote_bash_pid: ${REMOTE_PID}."
+  fi
+
+  trap __terminate INT TERM
+
 
   wait ${SSH_PID}
 
-  echo "Remote bash process: ${REMOTE_PID} has completed."
+  echo "SSH_PID: ${SSH_PID} has exited with $?."
 
   if [[ -n ${BASH_RESULT} ]]; then
     echo "Writting bash result..."
@@ -201,114 +211,122 @@ check-remoteuser() {
 terminate() {
   echo "[${SCRIPT_NAME}] Terminating..."
 
-  echo "[${SCRIPT_NAME}] ssh_pid(${SSH_PID}) is alive:  $(kill -0 ${SSH_PID} 2>/dev/null && echo "yes" || echo "no")"
+  if [[ -n "${SSH_PID}" ]]; then
+    echo "[${SCRIPT_NAME}] ssh_pid(${SSH_PID}) is alive:  $(kill -0 ${SSH_PID} 2>/dev/null && echo "yes" || echo "no")"
+  fi
 
-  kill-remote-pid
+  if [[ -n "${REMOTE_PID}" ]]; then
+    kill-remote-pid || echo "[${SCRIPT_NAME}] [Warning] Kill remote pid: ${REMOTE_PID} failed."
+  fi
 
-  kill-ssh-pid || echo "[${SCRIPT_NAME}] [Warning] Kill ssh pid failed."
+  if [[ -n "${SSH_PID}" ]]; then
+    kill-ssh-pid || echo "[${SCRIPT_NAME}] [Warning] Kill ssh_pid: ${SSH_PID} failed."
+  fi
 }
 
 kill-ssh-pid() {
-  if [[ -z "${SSH_PID:-}" || ! "${SSH_PID}" =~ ^[0-9]+$ ]]; then
-    echo "Error: Invalid SSH_PID (${SSH_PID})." >&2
+  if [ -z "${SSH_PID}" ]; then
+    echo "Error: SSH_PID param is empty." >&2
     return 1
   fi
 
-  echo "ssh_pid(${SSH_PID}) is alive:  $(kill -0 ${SSH_PID} 2>/dev/null && echo "yes" || echo "no")"
-
-  local pgid
-  pgid=$(ps -o pgid= ${SSH_PID} | grep -o '[0-9]*') || {
-    echo "Error: Failed to get PGID for SSH_PID." >&2
+  local ssh_pgid=$(ps -o pgid= ${SSH_PID} | grep -o '[0-9]*') || {
+    echo "Search process group for SSH_PID: ${SSH_PID} failed." >&2
     return 1
   }
 
-  if [[ -z "${pgid}" ]]; then
-    echo "Error: Failed to retrieve PGID for SSH_PID (${SSH_PID}). The PGID is empty." >&2
-    echo "Possible causes: The process may have exited or the PID is invalid." >&2
+  if [[ -z "${ssh_pgid}" ]]; then
+    echo "Process group of pid(${ssh_pgid}) is not exists, maybe it is already terminated?" >&2
     return 1
   fi
 
   local max_wait=60
   local wait_time=0
 
-  while ps -p ${pgid} >/dev/null; do
+  while kill -0 -- -"${ssh_pgid}" 2>/dev/null || {
+    echo "Kill -0 to ssh_pgid group exit with $?"
+    return 1
+  }; do
     if [[ ${wait_time} -ge ${max_wait} ]]; then
-      echo "[Warning] Kill ssh_pid(${SSH_PID}) group timeout." >&2
+      echo "Waiting ssh_pgid group: ${ssh_pgid} timeout..." >&2
       return 2
     fi
 
-    if ! kill -TERM -- -${pgid}; then
-      echo "[Warning] Kill failed for process group ${pgid}, retrying..." >&2
-    fi
+    kill -TERM -- -"${ssh_pgid}" || echo "Kill TERM signal to ssh_pgid group ${ssh_pgid} failed." >&2
 
+    echo "Waiting ssh_pgid group: ${ssh_pgid} exit..."
     sleep 5
     wait_time=$((wait_time + 5))
   done
 
-  echo "ssh_pid(${SSH_PID}) is alive:  $(kill -0 ${SSH_PID} 2>/dev/null && echo "yes" || echo "no")"
+  echo "ssh_pgid(${ssh_pgid}) is alive:  $(kill -0 ${ssh_pgid} 2>/dev/null && echo "yes" || echo "no")"
+
+  SSH_PID=""
 }
 
 kill-remote-pid() {
-  if [ -n "${REMOTE_PID}" ]; then
-    local remote_bash="bash"
-    if [[ -n "${REMOTE_SUDO}" ]]; then
-      remote_bash="sudo ${remote_bash}"
+  if [ -z "${REMOTE_PID}" ]; then
+    echo "Error: REMOTE_PID param is empty." >&2
+    return 1
+  fi
+
+  local remote_pgid=$("${SSH_CMD[@]}" "${REMOTE_USER}@${REMOTE_HOST}" "
+    echo \$(ps -o pgid= ${REMOTE_PID} | grep -o "[0-9]*") || {
+      echo "Search process group for remote_pid: ${REMOTE_PID} failed." >&2
+      exit 1
+    }")
+
+  if [[ -z "${remote_pgid}" ]]; then
+    echo "Process group of pid(${REMOTE_PID}) is not exists,maybe it is already terminated?" >&2
+    return 1
+  fi
+
+  local max_wait=60
+  local wait_time=0
+
+  while "${SSH_CMD[@]}" "${REMOTE_USER}@${REMOTE_HOST}" "
+      ${REMOTE_SH} -c '
+       kill -0 -- -${remote_pgid} 2>/dev/null || {
+          echo "Kill -0 to remote process group exit with \$?"
+          exit 1
+       }
+      '
+      "; do
+
+    if [[ ${wait_time} -ge ${max_wait} ]]; then
+      echo "Error: waiting remote process group: ${remote_pgid} timeout." >&2
+      return 2
     fi
 
-    # TODO
-    while "${SSH_CMD[@]}" "${REMOTE_USER}@${REMOTE_HOST}" "sudo kill -0 ${REMOTE_PID}"; do
-      echo "Killing remote process ${REMOTE_PID}"
-      "${SSH_CMD[@]}" "${REMOTE_USER}@${REMOTE_HOST}" "sudo kill -- -\$(ps -o pgid= ${REMOTE_PID} | grep -o '[0-9]*')" || true
+    echo "Killing remote process group ${remote_pgid}"
+    "${SSH_CMD[@]}" "${REMOTE_USER}@${REMOTE_HOST}" "
+        ${REMOTE_SH} -c '
+        kill -TERM -- -${remote_pgid} || echo "Kill TERM signal to remote process group ${remote_pgid} failed." >&2
+        '
+        "
 
-      # "${SSH_CMD[@]}" "${REMOTE_USER}@${REMOTE_HOST}" "
-      # ${remote_bash} -c '
-      #   sent_pgid=()
+    echo "Waiting remote process group: ${remote_pgid} exit..."
+    sleep 5
+    wait_time=$((wait_time + 5))
+  done
 
-      # kill_process_tree() {
-      #   local pid=\$1
-
-      #   local pgid=\$(ps -o pgid= -p \$pid | grep -o '[0-9]*') || true
-
-      #   if [[ -z "\$pgid" ]]; then
-      #     echo "Invalid process ID or failed to get PGID."
-      #     return 1
-      #   fi
-
-      #   if [[ " \${sent_pgid[@]} " =~ " \${pgid} " ]]; then
-      #     echo "Process group \$pgid has already been killed. Skipping."
-      #     return 0
-      #   fi
-
-      #   echo "Killing process group: \$pgid"
-      #   kill -TERM -\$pgid || true
-
-      #   sent_pgid+=(\$pgid)
-
-      #   local child_pids=\$(pgrep -P \$pid) || true
-
-      #
-      #   for child_pid in \$child_pids; do
-      #     kill_process_tree \$child_pid || true
-      #   done
-      # }
-      # kill_process_tree ${REMOTE_PID}
-      # '
-      # "
-
-      echo "Waiting remote_pid: ${REMOTE_PID} exit..."
-      sleep 5
-    done
-  fi
+  REMOTE_PID=""
 }
 
 cleanup() {
   echo "[${SCRIPT_NAME}] Cleanup..."
 
-  echo "[${SCRIPT_NAME}] ssh_pid(${SSH_PID}) is alive:  $(kill -0 ${SSH_PID} 2>/dev/null && echo "yes" || echo "no")"
+  if [[ -n "${SSH_PID}" ]]; then
+    echo "[${SCRIPT_NAME}] ssh_pid(${SSH_PID}) is alive:  $(kill -0 ${SSH_PID} 2>/dev/null && echo "yes" || echo "no")"
+  fi
 
-  kill-remote-pid
+  if [[ -n "${REMOTE_PID}" ]]; then
+    kill-remote-pid || echo "[${SCRIPT_NAME}] [Warning] Kill remote pid: ${REMOTE_PID} failed."
+  fi
 
-  kill-ssh-pid || echo "[${SCRIPT_NAME}] [Warning] Kill ssh pid failed."
+  if [[ -n "${SSH_PID}" ]]; then
+    kill-ssh-pid || echo "[${SCRIPT_NAME}] [Warning] Kill ssh_pid: ${SSH_PID} failed."
+  fi
 
   if [ -n "${REMOTE_TEMP_DIR}" ]; then
     echo "[${SCRIPT_NAME}] Cleaning remote_temp_dir..."

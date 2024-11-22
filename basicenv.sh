@@ -64,17 +64,31 @@ __terminate() {
 
   echo "[${SCRIPT_NAME}] Received signal INT or TERM, performing terminate..."
 
+  trap '' INT TERM
+
   terminate
 
-  # kill_process_tree $$
+  local pgid=$(ps -o pgid= $$ | grep -o '[0-9]*') || {
+    echo "[${SCRIPT_NAME}] Error: Search process group for $$ failed." >&2
+    exit 1
+  }
 
-  local pgids=$(pgrep -P $$) || true
-  for pid in $pgids; do
-    local pgid=$(ps -o pgid= $pid | grep -o '[0-9]*') || true
-    if [ -n "${pgid}" ] && ps -p ${pgid} >/dev/null; then
-      echo "Killing job: pgid: ${pgid}"
-      kill -TERM -$pgid || true
+  local max_wait=60
+  local wait_time=0
+
+  while true; do
+    if [ ${wait_time} -ge ${max_wait} ]; then
+      echo "[${SCRIPT_NAME}] Error: Kill TERM to process group: ${pgid} timeout." >&2
+      exit 1
     fi
+
+    if kill -TERM -- -"${pgid}"; then
+      break
+    fi
+
+    echo "[${SCRIPT_NAME}] [Warning] Kill TERM to process group: ${pgid} exited with $?"
+    sleep 5
+    wait_time=$((wait_time + 5))
   done
 
   wait
@@ -85,35 +99,6 @@ __terminate() {
   exit 1
 }
 
-sent_pgid=()
-
-kill_process_tree() {
-  local pid=$1
-
-  local pgid=$(ps -o pgid= -p $pid | grep -o '[0-9]*') || true
-
-  if [[ -z "$pgid" ]]; then
-    echo "Invalid process ID or failed to get PGID."
-    return 1
-  fi
-
-  if [[ " ${sent_pgid[@]} " =~ " ${pgid} " ]]; then
-    echo "Process group $pgid has already been killed. Skipping."
-    return 0
-  fi
-
-  echo "Killing process group: $pgid"
-  kill -TERM -$pgid || true
-
-  sent_pgid+=($pgid)
-
-  local child_pids=$(pgrep -P $pid) || true
-
-  for child_pid in $child_pids; do
-    kill_process_tree $child_pid || true
-  done
-}
-
 __CLEAN_DONE=0
 
 __cleanup() {
@@ -122,6 +107,8 @@ __cleanup() {
   fi
   __CLEAN_DONE=1
   echo "[${SCRIPT_NAME}] Received signal EXIT, performing cleanup..."
+
+  trap '' INT TERM
 
   cleanup
 
