@@ -1,4 +1,2 @@
 **/.DS_Store
-.meta/hack/pack
-.dmypasswd.txt
-.gh_token.txt
+hack/pack
